@@ -1,7 +1,5 @@
 import torch.nn.functional as F
 from mpformer.layers.evolution.module import *
-from mpformer.layers.smt.smtseg import SMTWrapper
-from mpformer.layers.adapters.bottleneck_adapter import BottleneckAdapter
 
 class Evolution_Network(nn.Module):
     def __init__(self, n_channels, n_classes, base_c=64, bilinear=True, net="smt"):
@@ -43,9 +41,12 @@ class Evolution_Network(nn.Module):
             
         elif self.net_type == "smt":
             # SMT-based architecture
+            from mpformer.layers.smt.smtseg import SMTWrapper
+            from mpformer.layers.adapters.bottleneck_adapter import BottleneckAdapter
+
             self.inc = DoubleConv(n_channels, base_c)
             self.adapter = BottleneckAdapter(in_channels=base_c, bottleneck_dim=base_c // 4)
-            self.smt = SMTWrapper(num_classes=32, pretrained=None)
+            self.smt = SMTWrapper(num_classes=base_c, pretrained=None)
             self.outc = OutConv(base_c * 1, n_classes)
             self.outc_v = OutConv(base_c * 1, n_classes * 2)
 

@@ -79,8 +79,8 @@ class UPerHead(BaseDecodeHead):
         psp_outs = torch.cat(psp_outs, dim=1)
         output = self.bottleneck(psp_outs)
 
-        # 上采样到目标分辨率
-        target_size = (512, 512)
+        # Keep PSP output at the top feature resolution; final logits use the input size.
+        target_size = inputs[-1].shape[2:]
         output = resize(
             output,
             size=target_size,
@@ -89,7 +89,7 @@ class UPerHead(BaseDecodeHead):
         
         return output
 
-    def _forward_feature(self, inputs):
+    def _forward_feature(self, inputs, target_size=None):
         """Forward function for feature maps before classifying each pixel with
         ``self.cls_seg`` fc.
 
@@ -136,7 +136,7 @@ class UPerHead(BaseDecodeHead):
                 align_corners=self.align_corners)
         fpn_outs = torch.cat(fpn_outs, dim=1)
         
-        final_size = (512, 512)
+        final_size = target_size if target_size is not None else fpn_outs[0].shape[2:]
         fpn_outs = resize(
             fpn_outs,
             size=final_size,
@@ -146,12 +146,12 @@ class UPerHead(BaseDecodeHead):
         feats = self.fpn_bottleneck(fpn_outs)
         return feats
 
-    def forward(self, inputs):
+    def forward(self, inputs, target_size=None):
         """Forward function."""
-        output = self._forward_feature(inputs)
+        output = self._forward_feature(inputs, target_size=target_size)
         output = self.cls_seg(output)
-        # 上采样到目标分辨率
-        target_size = (512, 512)
+        # Upsample logits to the requested input resolution.
+        target_size = target_size if target_size is not None else output.shape[2:]
         output = resize(
             output,
             size=target_size,

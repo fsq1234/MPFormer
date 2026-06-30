@@ -67,10 +67,11 @@ class SMTWrapper(nn.Module):
 
     def forward(self, x):
         # 通过主干网络提取特征
+        input_size = x.shape[-2:]
         features = self.backbone(x)
 
         # 解码头生成分割结果
-        decode_out = self.decode_head(features)
+        decode_out = self.decode_head(features, target_size=input_size)
 
         # 辅助头生成中间监督
         auxiliary_out = self.auxiliary_head(features)
