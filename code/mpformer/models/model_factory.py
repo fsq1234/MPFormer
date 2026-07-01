@@ -1,4 +1,5 @@
-﻿import os
+import math
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -133,14 +134,15 @@ class Model(pl.LightningModule):
         self.log(f'{stage}_accum_loss', loss_accum)
         self.log(f'{stage}_motion_loss', loss_motion)
 
-        self.hss.update(outputs, targets)
-        self.neigh_csi.update(outputs, targets)
-        self.neigh_csi2.update(outputs, targets)
-        self.psd.update(outputs, targets)
-        self.rmse.update(outputs, targets)
-        self.crps.update(outputs, targets)
-        self.fss.update(outputs, targets)
-        self.mae.update(outputs, targets)
+        if stage == 'val':
+            self.hss.update(outputs, targets)
+            self.neigh_csi.update(outputs, targets)
+            self.neigh_csi2.update(outputs, targets)
+            self.psd.update(outputs, targets)
+            self.rmse.update(outputs, targets)
+            self.crps.update(outputs, targets)
+            self.fss.update(outputs, targets)
+            self.mae.update(outputs, targets)
 
         return loss
     
@@ -150,23 +152,6 @@ class Model(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         return self._shared_step(batch, 'val')
     
-    def on_train_epoch_end(self):
-        self.log('train_hss', self.hss.compute())
-        self.log('train_neigh_csi2', self.neigh_csi2.compute())
-        self.log('train_rmse', self.rmse.compute())
-        self.log('train_crps', self.crps.compute())
-        self.log('train_fss', self.fss.compute())
-        self.log('train_mae', self.mae.compute())
-
-        self.hss.reset()
-        self.neigh_csi.reset()
-        self.neigh_csi2.reset()
-        self.psd.reset()
-        self.rmse.reset()
-        self.crps.reset()
-        self.fss.reset()
-        self.mae.reset()
-
     def on_validation_epoch_end(self):
         # 计算并记录每个时间步的CSI
         overall_csi, time_step_csi = self.neigh_csi.compute()
@@ -230,9 +215,58 @@ class Model(pl.LightningModule):
         self.mae.reset()
     
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.network.parameters(), lr=self.configs.learning_rate)
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=self.configs.step_size, gamma=0.5)
-        return [optimizer], [scheduler]
+        optimizer = optim.AdamW(
+            self.network.parameters(),
+            lr=self.configs.learning_rate,
+            betas=(getattr(self.configs, 'lr_beta1', 0.9), getattr(self.configs, 'lr_beta2', 0.95)),
+            weight_decay=getattr(self.configs, 'weight_decay', 0.0),
+        )
+        scheduler_type = getattr(self.configs, 'scheduler', 'cosine')
+        if scheduler_type == 'step':
+            scheduler = optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=self.configs.step_size,
+                gamma=0.5,
+            )
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': {
+                    'scheduler': scheduler,
+                    'interval': 'epoch',
+                    'frequency': 1,
+                    'name': 'step_lr',
+                },
+            }
+
+        warmup_steps = int(getattr(self.configs, 'warmup_steps', 1000))
+        total_steps = int(getattr(self.trainer, 'estimated_stepping_batches', 0) or 0)
+        if total_steps <= 0:
+            total_steps = max(warmup_steps + 1, int(getattr(self.configs, 'epochs', 1)))
+        total_steps = max(total_steps, warmup_steps + 1)
+
+        def lr_lambda(current_step):
+            if warmup_steps > 0 and current_step < warmup_steps:
+                return float(current_step) / float(max(1, warmup_steps))
+            progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+            progress = min(max(progress, 0.0), 1.0)
+            if scheduler_type == 'constant':
+                return 1.0
+            if scheduler_type == 'linear':
+                return max(0.0, 1.0 - progress)
+            if scheduler_type == 'cosine':
+                return 0.5 * (1.0 + math.cos(math.pi * progress))
+            raise ValueError(f"Unsupported scheduler: {scheduler_type}")
+
+        scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'interval': 'step',
+                'frequency': 1,
+                'name': f'{scheduler_type}_warmup_lr',
+            },
+        }
     
     def get_prototypes(self, outputs, targets):
         """

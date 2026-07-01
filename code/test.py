@@ -1,4 +1,4 @@
-﻿import os
+import os
 import glob
 import shutil
 import argparse
@@ -34,11 +34,21 @@ def parse_args():
     parser.add_argument('--dataset_path', type=str, default='data/mrms_test')
     parser.add_argument('--dataset_path_test', type=str, default='data/mrms_demo')
     parser.add_argument('--epochs', type=int, default=0)
+    parser.add_argument('--learning_rate', type=float, default=0.0001)
+    parser.add_argument('--lr_beta1', type=float, default=0.90)
+    parser.add_argument('--lr_beta2', type=float, default=0.95)
+    parser.add_argument('--weight_decay', type=float, default=0.0)
+    parser.add_argument('--scheduler', type=str, default='cosine', choices=['constant', 'linear', 'cosine', 'step'])
+    parser.add_argument('--warmup_steps', type=int, default=1000)
+    parser.add_argument('--step_size', type=int, default=4000)
     parser.add_argument('--num_save_samples', type=int, default=100)
     parser.add_argument('--evo_loss_weight', type=float, default=1.0)
     parser.add_argument('--motion_loss_weight', type=float, default=0.01)
     parser.add_argument('--evo_value_max', type=float, default=128.0)
     parser.add_argument('--show_summary', action='store_true', default=False)
+    parser.add_argument('--wandb_project', type=str, default='mpformer')
+    parser.add_argument('--wandb_name', type=str, default=None)
+    parser.add_argument('--wandb_save_dir', type=str, default='wandb_logs')
 
     args = parser.parse_args()
     # derived args

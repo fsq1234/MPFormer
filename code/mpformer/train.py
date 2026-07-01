@@ -1,19 +1,25 @@
-﻿import os
+import os
 import datetime
 import torch
 from mpformer.data_provider import datasets_factory
 import pytorch_lightning as pl
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from mpformer.models.model_factory import Model
 from torch.cuda.amp import autocast
 from mpformer.utils.data_normalization import ZNorm
 from torchinfo import summary
-from pytorch_lightning.loggers import CSVLogger
+from pytorch_lightning.loggers import WandbLogger
 
 def train_pytorch_loader(configs):
     norm = ZNorm()
-    csv_logger = CSVLogger(save_dir="lightning_logs", name="", version=None)
+    wandb_logger = WandbLogger(
+        project=getattr(configs, 'wandb_project', 'mpformer'),
+        name=getattr(configs, 'wandb_name', None),
+        save_dir=getattr(configs, 'wandb_save_dir', 'wandb_logs'),
+        log_model=False,
+    )
+    wandb_logger.experiment.config.update(vars(configs), allow_val_change=True)
 
     train_loader = datasets_factory.data_provider(configs)
     # print(len(train_loader))
@@ -41,6 +47,7 @@ def train_pytorch_loader(configs):
         input_size = (1, configs.input_length, configs.img_height, configs.img_width, configs.img_ch)
         print("Model Architecture:")
         summary(model, input_size=input_size, col_names=("input_size", "output_size", "num_params", "trainable"), depth=6)
+    lr_monitor = LearningRateMonitor(logging_interval='step')
     checkpoint_callback = ModelCheckpoint(
         dirpath=configs.checkpoint_dir,
         filename='mpformer-{epoch:02d}-{val_neigh_csi2:.2f}',
@@ -52,10 +59,10 @@ def train_pytorch_loader(configs):
     trainer_kwargs = dict(
         max_epochs=configs.epochs,
         num_nodes=1,
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, lr_monitor],
         log_every_n_steps=configs.log_interval,
         sync_batchnorm=True if torch.cuda.device_count() > 1 else False,
-        logger=csv_logger,
+        logger=wandb_logger,
     )
     if torch.cuda.device_count() > 1:
         trainer_kwargs['strategy'] = 'ddp_find_unused_parameters_true'
