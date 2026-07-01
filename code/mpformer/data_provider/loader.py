@@ -1,4 +1,4 @@
-import numpy as np
+﻿import numpy as np
 import os, shutil
 import pickle
 import random
@@ -30,6 +30,10 @@ class InputHandle(Dataset):
         data = []
         for img_path in self.case_list[index]:
             img = cv2.imread(img_path, 2)
+            if img is None:
+                raise FileNotFoundError(f'Failed to read frame: {img_path}')
+            if img.shape != (self.img_height, self.img_width):
+                raise ValueError(f'Frame shape {img.shape} does not match expected {(self.img_height, self.img_width)}: {img_path}')
             data.append(np.expand_dims(img, axis=0))
         data = np.concatenate(data, axis=0).astype(self.input_data_type) / 10.0 - 3.0
         assert data.shape[1]<=1024 and data.shape[2]<=1024 
@@ -42,7 +46,7 @@ class InputHandle(Dataset):
         mask[data < 0] = 0
         data[data < 0] = 0
         data = np.clip(data, 0, 128)
-        vid = np.zeros((self.length, self.img_height, self.img_width, 2))
+        vid = np.zeros((self.length, self.img_height, self.img_width, 2), dtype=np.float32)
         vid[..., 0] = data
         vid[..., 1] = mask
         img = dict()
@@ -51,3 +55,4 @@ class InputHandle(Dataset):
 
     def __len__(self):
         return len(self.case_list)
+

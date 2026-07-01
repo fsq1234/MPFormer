@@ -1,4 +1,4 @@
-import os
+﻿import os
 import datetime
 import torch
 from mpformer.data_provider import datasets_factory
@@ -37,13 +37,10 @@ def train_pytorch_loader(configs):
         # model = add_adapter(model, configs)
         # print("Adapter added to the model.")
         
-    # 假设 input_size 代表的输入张量形状为 torch.Size([8, 9, 512, 512, 2])
-    input_size = (1, 9, 512, 512, 2)
-
-    # 输出模型架构和每层的张量大小
-    print("Model Architecture:")
-    summary(model, input_size=input_size, col_names=("input_size", "output_size", "num_params", "trainable"), depth=6)
-
+    if getattr(configs, 'show_summary', False):
+        input_size = (1, configs.input_length, configs.img_height, configs.img_width, configs.img_ch)
+        print("Model Architecture:")
+        summary(model, input_size=input_size, col_names=("input_size", "output_size", "num_params", "trainable"), depth=6)
     checkpoint_callback = ModelCheckpoint(
         dirpath=configs.checkpoint_dir,
         filename='mpformer-{epoch:02d}-{val_neigh_csi2:.2f}',
@@ -52,20 +49,21 @@ def train_pytorch_loader(configs):
         monitor='val_neigh_csi2'
     )
 
-    trainer = Trainer(
-        max_epochs = configs.epochs,
-        num_nodes = 1 if configs.device.startswith('cuda') else 0,
+    trainer_kwargs = dict(
+        max_epochs=configs.epochs,
+        num_nodes=1,
         callbacks=[checkpoint_callback],
         log_every_n_steps=configs.log_interval,
-        # precision=16,   # 混合精度训练
-        # accumulate_grad_batches=2,   # 梯度累积
-        sync_batchnorm=True if torch.cuda.device_count() > 1 else False, # 多GPU时同步BatchNorm
-        strategy='ddp_find_unused_parameters_true',
-        logger=csv_logger  # 设置日志记录器为 CSVLogger
+        sync_batchnorm=True if torch.cuda.device_count() > 1 else False,
+        logger=csv_logger,
     )
+    if torch.cuda.device_count() > 1:
+        trainer_kwargs['strategy'] = 'ddp_find_unused_parameters_true'
 
+    trainer = Trainer(**trainer_kwargs)
     trainer.fit(
         model,
         train_dataloaders=train_loader,
         val_dataloaders=val_loader
     )
+

@@ -1,4 +1,4 @@
-from mpformer.data_provider import loader
+﻿from mpformer.data_provider import loader
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
@@ -22,7 +22,7 @@ def data_provider(configs):
         train_input_handle = DataLoader(
             train_dataset,
             batch_size=configs.batch_size,
-            shuffle=False,
+            shuffle=True,
             num_workers=configs.cpu_worker,
             drop_last=True
         )
@@ -71,7 +71,7 @@ def test_data_provider(configs):
                             'data_path': configs.dataset_path_test,
                             'type': 'test',
                             }
-        test_input_handle = datasets_map[configs.dataset_path_test].InputHandle(test_input_param)
+        test_input_handle = datasets_map[configs.dataset_name].InputHandle(test_input_param)
         print(len(test_input_handle))
         test_input_handle = DataLoader(test_input_handle,
                                        batch_size=configs.batch_size,
@@ -84,4 +84,5 @@ def test_data_provider(configs):
         raise ValueError('Name of dataset unknown %s' % configs.dataset_name)
 
     return test_input_handle
+
 

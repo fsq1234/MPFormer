@@ -25,7 +25,7 @@ class Net(nn.Module):
         if self.configs.adapter:
             self._freeze_backbone()
 
-    def forward(self, all_frames):
+    def forward(self, all_frames, return_aux=False):
         all_frames = all_frames[:, :, :, :, :1]
 
         frames = all_frames.permute(0, 1, 4, 2, 3)
@@ -42,41 +42,74 @@ class Net(nn.Module):
         motion_ = motion.reshape(batch, self.pred_length, 2, height, width)
         intensity_ = intensity.reshape(batch, self.pred_length, 1, height, width)
         series = []
+        series_bili = []
         last_frames = all_frames[:, (self.configs.input_length - 1):self.configs.input_length, :, :, 0]
-        grid = self.grid.repeat(batch, 1, 1, 1)
+        grid = self.grid.to(device=all_frames.device, dtype=all_frames.dtype).repeat(batch, 1, 1, 1)
         for i in range(self.pred_length):
-            last_frames = warp(last_frames, motion_[:, i], grid.cuda(), mode="nearest", padding_mode="border")
-            last_frames = last_frames + intensity_[:, i]
+            last_frames_for_warp = last_frames.detach()
+            last_frames_bili = warp(
+                last_frames_for_warp,
+                motion_[:, i],
+                grid,
+                mode="bilinear",
+                padding_mode="border",
+            )
+            last_frames_nearest = warp(
+                last_frames_for_warp,
+                motion_[:, i],
+                grid,
+                mode="nearest",
+                padding_mode="border",
+            )
+            last_frames = last_frames_nearest.detach() + intensity_[:, i]
             series.append(last_frames)
-        evo_result = torch.cat(series, dim=1)
+            series_bili.append(last_frames_bili)
+        evo_result_raw = torch.cat(series, dim=1)
+        evo_result_bili_raw = torch.cat(series_bili, dim=1)
 
-        evo_result = evo_result/128
+        input_frames_gen = input_frames / 128
+        evo_result = evo_result_raw / 128
         
         # Generative Network
-        evo_feature = self.gen_enc(torch.cat([input_frames, evo_result], dim=1))
+        evo_feature = self.gen_enc(torch.cat([input_frames_gen, evo_result], dim=1))
 
-        noise = torch.randn(batch, self.configs.ngf, height // 32, width // 32).cuda()
+        noise = torch.randn(
+            batch,
+            self.configs.ngf,
+            height // 32,
+            width // 32,
+            device=all_frames.device,
+            dtype=all_frames.dtype,
+        )
         noise_feature = self.proj(noise).reshape(batch, -1, 4, 4, 8, 8).permute(0, 1, 4, 5, 2, 3).reshape(batch, -1, height // 8, width // 8)
 
         feature = torch.cat([evo_feature, noise_feature], dim=1)
         gen_result = self.gen_dec(feature, evo_result)
 
-        return gen_result.unsqueeze(-1)
+        gen_result = gen_result.unsqueeze(-1)
+        if return_aux:
+            return gen_result, {
+                "evo_result": evo_result_raw,
+                "evo_result_bili": evo_result_bili_raw,
+                "intensity": intensity_,
+                "motion": motion_,
+            }
+        return gen_result
     
     def _freeze_backbone(self):
-        # 冻结 Evolution_Network 和 Generative_Encoder 的主干层
+        # 冻结 Evolution_Network �?Generative_Encoder 的主干层
         for name, param in self.evo_net.named_parameters():
             if 'adapter' not in name:  # 保证 Bottleneck Adapter 未被冻结
                 param.requires_grad = False
 
         for name, param in self.gen_enc.named_parameters():
-            if 'adapter' not in name:  # 同样保留 Bottleneck Adapter 的训练
+            if 'adapter' not in name:  # 同样保留 Bottleneck Adapter 的训�?
                 param.requires_grad = False
                 
         for name, param in self.gen_dec.named_parameters():
-            if 'adapter' not in name:  # 同样保留 Bottleneck Adapter 的训练
+            if 'adapter' not in name:  # 同样保留 Bottleneck Adapter 的训�?
                 param.requires_grad = False
                 
         for name, param in self.proj.named_parameters():
-            if 'adapter' not in name:  # 同样保留 Bottleneck Adapter 的训练
+            if 'adapter' not in name:  # 同样保留 Bottleneck Adapter 的训�?
                 param.requires_grad = False

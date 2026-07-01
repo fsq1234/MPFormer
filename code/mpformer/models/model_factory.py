@@ -1,4 +1,4 @@
-import os
+﻿import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 from mpformer.models import mpformer
 from mpformer.utils import metrics
 from mpformer.utils import loss_assemble
+from mpformer.utils.loss_evolution import accumulation_loss, motion_reg
 
 class CustomLoss(nn.Module):
     """
@@ -53,14 +54,14 @@ class SASTLoss(nn.Module):
         
         if self.losstype == 'multi':
             # iterate越大，关注的越细，算的越慢
-            self.Loss_func3 = loss_assemble.WSloss().cuda()
-            self.Loss_func4 = loss_assemble.MTloss(scaler=1.0).cuda()
+            self.Loss_func3 = loss_assemble.WSloss()
+            self.Loss_func4 = loss_assemble.MTloss(scaler=1.0)
         else:
-            self.Loss_func3 = loss_assemble.WSloss_linear_add_adhoc().cuda() # [0.25, 1., 4.]
+            self.Loss_func3 = loss_assemble.WSloss_linear_add_adhoc() # [0.25, 1., 4.]
             if self.use_wavelet:
-                self.Loss_func4 = loss_assemble.WTloss().cuda()
+                self.Loss_func4 = loss_assemble.WTloss()
             else:
-                self.Loss_func4 = loss_assemble.MTloss_add_linear(scaler=0.1, iterate=self.configs['t_iter']).cuda()
+                self.Loss_func4 = loss_assemble.MTloss_add_linear(scaler=0.1, iterate=self.configs['t_iter'])
         
     def forward(self, preds, targets):
         if self.losstype == 'multi':
@@ -83,6 +84,9 @@ class Model(pl.LightningModule):
         self.configs = configs
         self.network = mpformer.Net(configs)
         self.criterion = SASTLoss(losstype='single')
+        self.evo_loss_weight = getattr(configs, 'evo_loss_weight', 1.0)
+        self.motion_loss_weight = getattr(configs, 'motion_loss_weight', 0.01)
+        self.evo_value_lim = (0.0, float(getattr(configs, 'evo_value_max', 128.0)))
 
         self.hss = metrics.HSS()
         self.neigh_csi = metrics.NeighbourhoodCSI(kernel_size=3)
@@ -96,60 +100,63 @@ class Model(pl.LightningModule):
     def forward(self, x):
         x = x.float()
         return self.network(x)
+
+    def _shared_step(self, batch, stage):
+        radar_frames = batch['radar_frames'].float()
+        inputs = radar_frames[:, :self.configs.input_length]
+        targets = radar_frames[:, self.configs.input_length:, ..., 0:1]
+        outputs, aux = self.network(inputs, return_aux=True)
+
+
+        forecast_loss = self.criterion(outputs, targets)
+        loss = forecast_loss
+
+        target_evo = targets.squeeze(-1)
+        loss_accum = accumulation_loss(
+            pred_final=aux["evo_result"],
+            pred_bili=aux["evo_result_bili"],
+            real=target_evo,
+            value_lim=self.evo_value_lim,
+        )
+        loss_motion = motion_reg(
+            motion=aux["motion"],
+            gt=target_evo,
+            value_lim=self.evo_value_lim,
+        )
+        loss_evo = loss_accum + self.motion_loss_weight * loss_motion
+        if self.evo_loss_weight:
+            loss = loss + self.evo_loss_weight * loss_evo
+
+        self.log(f'{stage}_loss', loss)
+        self.log(f'{stage}_forecast_loss', forecast_loss)
+        self.log(f'{stage}_evo_loss', loss_evo)
+        self.log(f'{stage}_accum_loss', loss_accum)
+        self.log(f'{stage}_motion_loss', loss_motion)
+
+        self.hss.update(outputs, targets)
+        self.neigh_csi.update(outputs, targets)
+        self.neigh_csi2.update(outputs, targets)
+        self.psd.update(outputs, targets)
+        self.rmse.update(outputs, targets)
+        self.crps.update(outputs, targets)
+        self.fss.update(outputs, targets)
+        self.mae.update(outputs, targets)
+
+        return loss
     
     def training_step(self, batch, batch_idx):
-        radar_frames = batch['radar_frames'].float()
-        inputs = radar_frames[:, :self.configs.input_length]
-        targets = radar_frames[:, self.configs.input_length:]
-        outputs = self(inputs)
-
-        prototypes = self.get_prototypes(outputs, targets)
-        positive_pairs, negative_pairs = self.get_pairs(outputs, targets)
-
-        loss = self.criterion(outputs, targets) # SASTLoss
-        self.log('train_loss', loss)
-
-        self.hss.update(outputs, targets)
-        self.neigh_csi.update(outputs, targets)
-        self.neigh_csi2.update(outputs, targets)
-        self.psd.update(outputs, targets)
-        self.rmse.update(outputs, targets)
-        self.crps.update(outputs, targets)
-        self.fss.update(outputs, targets)
-        self.mae.update(outputs, targets)
-
-        return loss
+        return self._shared_step(batch, 'train')
     
     def validation_step(self, batch, batch_idx):
-        radar_frames = batch['radar_frames'].float()
-        inputs = radar_frames[:, :self.configs.input_length]
-        targets = radar_frames[:, self.configs.input_length:]
-        outputs = self(inputs)
-
-        prototypes = self.get_prototypes(outputs, targets)
-        positive_pairs, negative_pairs = self.get_pairs(outputs, targets)
-
-        loss = self.criterion(outputs, targets) # SASTLoss
-        self.log('val_loss', loss)
-        
-        self.hss.update(outputs, targets)
-        self.neigh_csi.update(outputs, targets)
-        self.neigh_csi2.update(outputs, targets)
-        self.psd.update(outputs, targets)
-        self.rmse.update(outputs, targets)
-        self.crps.update(outputs, targets)
-        self.fss.update(outputs, targets)
-        self.mae.update(outputs, targets)
-
-        return loss
+        return self._shared_step(batch, 'val')
     
-    def on_training_epoch_end(self, outputs):
-        self.log('val_hss', self.hss.compute())
-        self.log('val_neigh_csi2', self.neigh_csi2.compute())
-        self.log('val_rmse', self.rmse.compute())
-        self.log('val_crps', self.crps.compute())
-        self.log('val_fss', self.fss.compute())
-        self.log('val_mae', self.mae.compute())
+    def on_train_epoch_end(self):
+        self.log('train_hss', self.hss.compute())
+        self.log('train_neigh_csi2', self.neigh_csi2.compute())
+        self.log('train_rmse', self.rmse.compute())
+        self.log('train_crps', self.crps.compute())
+        self.log('train_fss', self.fss.compute())
+        self.log('train_mae', self.mae.compute())
 
         self.hss.reset()
         self.neigh_csi.reset()
@@ -273,3 +280,4 @@ class Model(pl.LightningModule):
         negative_pairs = outputs.unsqueeze(2) * negative_mask # [batch_size, seq_length, 1, height, width, channels]
 
         return positive_pairs, negative_pairs
+

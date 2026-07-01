@@ -1,4 +1,4 @@
-import os
+﻿import os
 import glob
 import shutil
 import argparse
@@ -29,12 +29,16 @@ def parse_args():
     parser.add_argument('--checkpoint_dir', type=str, default='model',
                         help='Directory containing saved .ckpt files')
     parser.add_argument('--batch_size', type=int, default=1)
-    parser.add_argument('--adapter', type=bool, default=False)
+    parser.add_argument('--adapter', action='store_true', default=False)
     parser.add_argument('--ngf', type=int, default=32)
     parser.add_argument('--dataset_path', type=str, default='data/mrms_test')
     parser.add_argument('--dataset_path_test', type=str, default='data/mrms_demo')
     parser.add_argument('--epochs', type=int, default=0)
     parser.add_argument('--num_save_samples', type=int, default=100)
+    parser.add_argument('--evo_loss_weight', type=float, default=1.0)
+    parser.add_argument('--motion_loss_weight', type=float, default=0.01)
+    parser.add_argument('--evo_value_max', type=float, default=128.0)
+    parser.add_argument('--show_summary', action='store_true', default=False)
 
     args = parser.parse_args()
     # derived args
@@ -96,3 +100,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+

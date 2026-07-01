@@ -1,4 +1,4 @@
-import torch
+﻿import torch
 from pytorch_msssim import ssim
 from torch import nn
 import torch.nn.functional as F
@@ -86,14 +86,14 @@ class MTloss(nn.Module):
         super(MTloss, self).__init__()
         self.k_size = [5, 7, 11]
         self.iterate = iterate
-        self.loss_func = nn.L1Loss().cuda()
+        self.loss_func = nn.L1Loss()
         self.scaler = scaler
 
     def forward(self, x, y):
         loss = []
         loss.append(self.loss_func(x[:, 1:] - x[:, :11], y[:, 1:] - y[:, :11]) * self.scaler)
         for m in range(self.iterate):
-            pf = nn.AvgPool2d(self.k_size[m], stride=1, padding=int((self.k_size[m] - 1) / 2)).cuda()
+            pf = nn.AvgPool2d(self.k_size[m], stride=1, padding=int((self.k_size[m] - 1) / 2))
             loss.append(self.loss_func(pf(x[:, 1:]) - pf(x[:, :11]), pf(y[:, 1:]) - pf(y[:, :11])) * self.scaler)
         return loss
     
@@ -103,7 +103,7 @@ class WTloss(nn.Module):
         super(WTloss, self).__init__()
         self.dwt = DWTForward(J=1, wave='haar', mode='symmetric')
         self.iterate = 3
-        self.loss_func = nn.L1Loss().cuda()
+        self.loss_func = nn.L1Loss()
 
     def forward(self, x, y):
         y = y[..., 0:1].permute(0, 4, 1, 2, 3).reshape(-1, 1, y.shape[2], y.shape[3])
@@ -134,12 +134,12 @@ class MTloss_add_linear(nn.Module):
         super(MTloss_add_linear, self).__init__()
         self.k_size = [5, 7, 11, 12, 13, 14]
         self.iterate = iterate
-        self.loss_func = nn.L1Loss().cuda()
+        self.loss_func = nn.L1Loss()
         self.scaler = scaler
 
     def forward(self, x, y):
         loss = self.loss_func(x[:, 1:] - x[:, :11], y[:, 1:] - y[:, :11]) * self.scaler
         for m in range(self.iterate):
-            pf = nn.AvgPool2d(self.k_size[m], stride=1, padding=0).cuda()
+            pf = nn.AvgPool2d(self.k_size[m], stride=1, padding=0)
             loss += self.loss_func(pf(x[:, 1:]) - pf(x[:, :11]), pf(y[:, 1:]) - pf(y[:, :11])) * self.scaler
         return loss

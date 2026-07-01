@@ -1,4 +1,4 @@
-import os
+﻿import os
 import shutil
 import argparse
 import cv2
@@ -30,7 +30,7 @@ parser.add_argument('--model_name', type=str, default='mpformer')
 parser.add_argument('--gen_frm_dir', type=str, default='results/mpformer')
 parser.add_argument('--pretrained_model', type=str, default='mpformer.ckpt')
 parser.add_argument('--batch_size', type=int, default=2)
-parser.add_argument('--adapter', type=bool, default=True)
+parser.add_argument('--adapter', action='store_true', default=False)
 parser.add_argument('--num_save_samples', type=int, default=10)
 parser.add_argument('--ngf', type=int, default=32)  # number of generator filters in first conv layer
 parser.add_argument('--dataset_path', type=str, default='data/dataset/mrms/figure') 
@@ -42,6 +42,10 @@ parser.add_argument('--save_interval', type=int, default=10)
 parser.add_argument('--step_size', type=int, default=4000) # 学习率调度器的步长，每个step_size个epoch衰减gamma倍
 parser.add_argument('--checkpoint_dir', type=str, default='data/checkpoints/train02')
 parser.add_argument('--temperature', type=int, default=0.07)
+parser.add_argument('--evo_loss_weight', type=float, default=1.0)
+parser.add_argument('--motion_loss_weight', type=float, default=0.01)
+parser.add_argument('--evo_value_max', type=float, default=128.0)
+parser.add_argument('--show_summary', action='store_true', default=False)
 
 args = parser.parse_args()
 
@@ -62,3 +66,4 @@ os.makedirs(args.gen_frm_dir)
 print('Initializing models')
 
 train.train_pytorch_loader(args)
+
