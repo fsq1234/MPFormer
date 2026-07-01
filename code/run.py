@@ -1,5 +1,4 @@
 import os
-import shutil
 import argparse
 import cv2
 import numpy as np
@@ -66,10 +65,6 @@ def test_wrapper_pytorch_loader(model):
     test_input_handle = datasets_factory.data_provider(args)
     args.batch_size = batch_size_test
     evaluator.test_pytorch_loader(model, test_input_handle, args, 'test_result')
-
-if os.path.exists(args.gen_frm_dir):
-    shutil.rmtree(args.gen_frm_dir)
-os.makedirs(args.gen_frm_dir)
 
 print('Initializing models')
 

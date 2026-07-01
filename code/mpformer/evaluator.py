@@ -73,7 +73,7 @@ def test_pytorch_loader_calib(model, test_input_handle, configs, itr):
 def test_pytorch_loader(model, test_input_handle, configs, itr):
     print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') , 'test...')
     res_path = os.path.join(configs.gen_frm_dir, str(itr))
-    os.mkdir(res_path)
+    os.makedirs(res_path, exist_ok=True)
 
     for batch_id, test_ims in enumerate(test_input_handle):
 
@@ -107,7 +107,7 @@ def test_pytorch_loader(model, test_input_handle, configs, itr):
 
         if batch_id <= configs.num_save_samples:
             path = os.path.join(res_path, str(batch_id))
-            os.mkdir(path)
+            os.makedirs(path, exist_ok=True)
             if configs.case_type == 'normal':
                 test_ims_plot = test_ims[0][:-2, 256-192:256+192, 256-192:256+192]
                 img_gen_plot = img_gen[0][:-2, 256-192:256+192, 256-192:256+192]
