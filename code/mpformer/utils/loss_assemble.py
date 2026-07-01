@@ -1,4 +1,4 @@
-﻿import torch
+import torch
 from pytorch_msssim import ssim
 from torch import nn
 import torch.nn.functional as F
@@ -9,31 +9,35 @@ def ssim_loss(x, y, data_range=1.0, channel=1):
     return ssim(x, y, data_range=data_range, size_average=True, channel=channel)
 
 class BMSELoss(nn.Module):
-    def __init__(self, weights, thresholds):
+    def __init__(self, weights, thresholds, value_scale=1.0):
         super(BMSELoss, self).__init__()
         assert len(weights) == len(thresholds)
         self.weights=weights
         self.thresholds=thresholds
+        self.value_scale=value_scale
 
     def forward(self, preds, targets):
-        w_targets = targets.clone()
-        for i in range(len(self.weights)):
-            w_targets[w_targets < self.thresholds[i]] = self.weights[i]
-        return torch.mean(w_targets * (preds - targets) ** 2)
+        raw_targets = targets * self.value_scale
+        weights = torch.ones_like(raw_targets)
+        for weight, threshold in zip(self.weights, self.thresholds):
+            weights = torch.where(raw_targets >= threshold, raw_targets.new_tensor(weight), weights)
+        return torch.mean(weights * (preds - targets) ** 2)
     
 
 class BMAELoss(nn.Module):
-    def __init__(self, weights, thresholds):
+    def __init__(self, weights, thresholds, value_scale=1.0):
         super(BMAELoss, self).__init__()
         assert len(weights) == len(thresholds)
         self.weights=weights
         self.thresholds=thresholds
+        self.value_scale=value_scale
     
     def forward(self, preds, targets):
-        w_targets = targets.clone()
-        for i in range(len(self.weights)):
-            w_targets[w_targets < self.thresholds[i]] = self.weights[i]
-        return torch.mean(w_targets * torch.abs(preds - targets))
+        raw_targets = targets * self.value_scale
+        weights = torch.ones_like(raw_targets)
+        for weight, threshold in zip(self.weights, self.thresholds):
+            weights = torch.where(raw_targets >= threshold, raw_targets.new_tensor(weight), weights)
+        return torch.mean(weights * torch.abs(preds - targets))
     
 
 class WSloss(nn.Module):
@@ -66,18 +70,18 @@ class WSloss_linear_add_adhoc(nn.Module):
     def forward(self, x, y):       
         y = y[..., 0:1].permute(0, 4, 1, 2, 3).reshape(-1, 1, y.shape[2], y.shape[3])
         x = x.permute(0, 4, 1, 2, 3).reshape(-1, 1, x.shape[2], x.shape[3])
-        loss = 1 - ssim(x, y, data_range=1.0)  # 初始SSIM损失
-        l, m, h = self.scaler  # 提取低、中、高频的权重
+        loss = 1 - ssim(x, y, data_range=1.0)  # Initial SSIM loss
+        l, m, h = self.scaler  # Low, mid, high frequency weights
 
         for _ in range(self.iterate):
             x0, x1 = self.dwt(x)
             y0, y1 = self.dwt(y)
-            # 累加高频和低频分量的损失
+            # Accumulate high- and low-frequency losses
             loss += (1 - ssim(x1[0][:,:,0], y1[0][:,:,0], data_range=1.0)) * m
             loss += (1 - ssim(x1[0][:,:,1], y1[0][:,:,1], data_range=1.0)) * m
             loss += (1 - ssim(x1[0][:,:,2], y1[0][:,:,2], data_range=1.0)) * h
             loss += (1 - ssim(x0, y0, data_range=1.0)) * l
-            x, y = x0, y0  # 更新为低频分量，继续迭代
+            x, y = x0, y0  # Continue with the low-frequency component
         return loss
 
 
@@ -110,20 +114,20 @@ class WTloss(nn.Module):
         x = x.permute(0, 4, 1, 2, 3).reshape(-1, 1, x.shape[2], x.shape[3])
         loss = self.loss_func(x, y)
         l, m, h = 0.25, 1.0, 4.0
-        # 迭代进行小波分解
+        # Iterative wavelet decomposition
         for i in range(self.iterate):
-            x0, x1 = self.dwt(x)  # x0是低频分量，x1是高频分量
+            x0, x1 = self.dwt(x)
             y0, y1 = self.dwt(y)
 
-            # 计算高频分量的L1损失，并加权
+            # Weighted L1 loss on high-frequency components
             loss += self.loss_func(x1[0][:, :, 0], y1[0][:, :, 0]) * m
             loss += self.loss_func(x1[0][:, :, 1], y1[0][:, :, 1]) * m
             loss += self.loss_func(x1[0][:, :, 2], y1[0][:, :, 2]) * h
 
-            # 计算低频分量的L1损失，并加权
+            # Weighted L1 loss on low-frequency components
             loss += self.loss_func(x0, y0) * l
 
-            # 更新 x 和 y，继续下一次小波迭代
+            # Continue with the low-frequency component
             x, y = x0, y0
 
         return loss

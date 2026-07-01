@@ -1,4 +1,4 @@
-﻿import os
+import os
 import glob
 import shutil
 import argparse
@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument('--num_save_samples', type=int, default=100)
     parser.add_argument('--evo_loss_weight', type=float, default=1.0)
     parser.add_argument('--motion_loss_weight', type=float, default=0.01)
-    parser.add_argument('--evo_value_max', type=float, default=128.0)
+    parser.add_argument('--evo_value_max', type=float, default=1.0)
     parser.add_argument('--show_summary', action='store_true', default=False)
 
     args = parser.parse_args()

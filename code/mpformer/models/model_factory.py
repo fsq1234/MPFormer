@@ -1,4 +1,4 @@
-﻿import os
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -49,8 +49,8 @@ class SASTLoss(nn.Module):
         self.use_wavelet = True
         
         # 初始化损失函数
-        self.Loss_func1 = loss_assemble.BMSELoss(weights=self.weights, thresholds=self.thresholds)
-        self.Loss_func2 = loss_assemble.BMAELoss(weights=self.weights, thresholds=self.thresholds)
+        self.Loss_func1 = loss_assemble.BMSELoss(weights=self.weights, thresholds=self.thresholds, value_scale=128.0)
+        self.Loss_func2 = loss_assemble.BMAELoss(weights=self.weights, thresholds=self.thresholds, value_scale=128.0)
         
         if self.losstype == 'multi':
             # iterate越大，关注的越细，算的越慢
@@ -86,7 +86,7 @@ class Model(pl.LightningModule):
         self.criterion = SASTLoss(losstype='single')
         self.evo_loss_weight = getattr(configs, 'evo_loss_weight', 1.0)
         self.motion_loss_weight = getattr(configs, 'motion_loss_weight', 0.01)
-        self.evo_value_lim = (0.0, float(getattr(configs, 'evo_value_max', 128.0)))
+        self.evo_value_lim = (0.0, float(getattr(configs, 'evo_value_max', 1.0)))
 
         self.hss = metrics.HSS()
         self.neigh_csi = metrics.NeighbourhoodCSI(kernel_size=3)
@@ -133,14 +133,16 @@ class Model(pl.LightningModule):
         self.log(f'{stage}_accum_loss', loss_accum)
         self.log(f'{stage}_motion_loss', loss_motion)
 
-        self.hss.update(outputs, targets)
-        self.neigh_csi.update(outputs, targets)
-        self.neigh_csi2.update(outputs, targets)
-        self.psd.update(outputs, targets)
-        self.rmse.update(outputs, targets)
-        self.crps.update(outputs, targets)
-        self.fss.update(outputs, targets)
-        self.mae.update(outputs, targets)
+        metric_outputs = torch.clamp(outputs, 0.0, 1.0) * 128.0
+        metric_targets = torch.clamp(targets, 0.0, 1.0) * 128.0
+        self.hss.update(metric_outputs, metric_targets)
+        self.neigh_csi.update(metric_outputs, metric_targets)
+        self.neigh_csi2.update(metric_outputs, metric_targets)
+        self.psd.update(metric_outputs, metric_targets)
+        self.rmse.update(metric_outputs, metric_targets)
+        self.crps.update(metric_outputs, metric_targets)
+        self.fss.update(metric_outputs, metric_targets)
+        self.mae.update(metric_outputs, metric_targets)
 
         return loss
     

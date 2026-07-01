@@ -1,4 +1,4 @@
-﻿import numpy as np
+import numpy as np
 import os, shutil
 import pickle
 import random
@@ -45,7 +45,7 @@ class InputHandle(Dataset):
         mask = np.ones_like(data)
         mask[data < 0] = 0
         data[data < 0] = 0
-        data = np.clip(data, 0, 128)
+        data = np.clip(data, 0, 128) / 128.0
         vid = np.zeros((self.length, self.img_height, self.img_width, 2), dtype=np.float32)
         vid[..., 0] = data
         vid[..., 1] = mask
