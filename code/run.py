@@ -49,7 +49,7 @@ parser.add_argument('--checkpoint_dir', type=str, default='data/checkpoints/trai
 parser.add_argument('--temperature', type=int, default=0.07)
 parser.add_argument('--evo_loss_weight', type=float, default=1.0)
 parser.add_argument('--motion_loss_weight', type=float, default=0.01)
-parser.add_argument('--evo_value_max', type=float, default=128.0)
+parser.add_argument('--evo_value_max', type=float, default=1.0)
 parser.add_argument('--show_summary', action='store_true', default=False)
 parser.add_argument('--wandb_project', type=str, default='mpformer')
 parser.add_argument('--wandb_name', type=str, default=None)

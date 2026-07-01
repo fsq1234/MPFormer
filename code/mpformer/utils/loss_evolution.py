@@ -7,7 +7,7 @@ def weight_func(x, value_lim):
     return torch.clamp(1.0 + (x - value_min) / (value_max - value_min) * 128.0, max=24.0)
 
 
-def wdis_l1(pred, gt, reg_loss=True, value_lim=(0.0, 128.0)):
+def wdis_l1(pred, gt, reg_loss=True, value_lim=(0.0, 1.0)):
     w = weight_func(gt, value_lim)
     diff_w = torch.abs(pred - gt) * w
     if reg_loss:
@@ -33,7 +33,7 @@ def sobel_filter_2d(x):
     return gx, gy
 
 
-def motion_reg(motion, gt, reg_loss=True, value_lim=(0.0, 128.0)):
+def motion_reg(motion, gt, reg_loss=True, value_lim=(0.0, 1.0)):
     total_reg = motion.new_tensor(0.0)
     for t in range(motion.shape[1]):
         vx = motion[:, t, 0]
@@ -52,7 +52,7 @@ def motion_reg(motion, gt, reg_loss=True, value_lim=(0.0, 128.0)):
     return total_reg
 
 
-def accumulation_loss(pred_final, pred_bili, real, reg_loss=True, value_lim=(0.0, 128.0)):
+def accumulation_loss(pred_final, pred_bili, real, reg_loss=True, value_lim=(0.0, 1.0)):
     loss = wdis_l1(pred_final, real, reg_loss=reg_loss, value_lim=value_lim)
     if pred_bili is not None:
         loss = 0.5 * (loss + wdis_l1(pred_bili, real, reg_loss=reg_loss, value_lim=value_lim))

@@ -21,7 +21,7 @@ class Net(nn.Module):
         sample_tensor = torch.zeros(1, 1, self.configs.img_height, self.configs.img_width)
         self.grid = make_grid(sample_tensor)
         
-        # 是否冻结主干网络
+        # Optionally freeze backbone modules when adapter tuning is enabled.
         if self.configs.adapter:
             self._freeze_backbone()
 
@@ -67,8 +67,8 @@ class Net(nn.Module):
         evo_result_raw = torch.cat(series, dim=1)
         evo_result_bili_raw = torch.cat(series_bili, dim=1)
 
-        input_frames_gen = input_frames / 128
-        evo_result = evo_result_raw / 128
+        input_frames_gen = input_frames
+        evo_result = evo_result_raw
         
         # Generative Network
         evo_feature = self.gen_enc(torch.cat([input_frames_gen, evo_result], dim=1))
@@ -97,19 +97,19 @@ class Net(nn.Module):
         return gen_result
     
     def _freeze_backbone(self):
-        # 冻结 Evolution_Network �?Generative_Encoder 的主干层
+        # Freeze backbone modules and leave adapter parameters trainable.
         for name, param in self.evo_net.named_parameters():
-            if 'adapter' not in name:  # 保证 Bottleneck Adapter 未被冻结
+            if 'adapter' not in name:
                 param.requires_grad = False
 
         for name, param in self.gen_enc.named_parameters():
-            if 'adapter' not in name:  # 同样保留 Bottleneck Adapter 的训�?
+            if 'adapter' not in name:
                 param.requires_grad = False
                 
         for name, param in self.gen_dec.named_parameters():
-            if 'adapter' not in name:  # 同样保留 Bottleneck Adapter 的训�?
+            if 'adapter' not in name:
                 param.requires_grad = False
                 
         for name, param in self.proj.named_parameters():
-            if 'adapter' not in name:  # 同样保留 Bottleneck Adapter 的训�?
+            if 'adapter' not in name:
                 param.requires_grad = False
